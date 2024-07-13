@@ -5,28 +5,16 @@ from collections import defaultdict
 import os
 
 # Kafka Consumer Configuration using environment variables
-try:
-    bootstrap_servers = os.environ['BOOTSTRAP_SERVERS']
-    group_id = os.environ['GROUP_ID']
-    auto_offset_reset = os.environ['AUTO_OFFSET_RESET']
-
-except KeyError as e:
-    print(f"Error: Missing environment variable {e}")
-    exit(1)
-
-
 consumer_conf = {
-    'bootstrap.servers': bootstrap_servers,
-    'group.id': group_id,
-    'auto.offset.reset': auto_offset_reset
+    'bootstrap.servers': os.getenv('BOOTSTRAP_SERVERS', 'localhost:29092'),
+    'group.id': os.getenv('GROUP_ID', 'my-consumer-group'),
+    'auto.offset.reset': os.getenv('AUTO_OFFSET_RESET', 'earliest')
 }
 
 # Kafka Producer Configuration using environment variables
 producer_conf = {
-    'bootstrap.servers': bootstrap_servers
+    'bootstrap.servers': os.getenv('BOOTSTRAP_SERVERS', 'localhost:29092')
 }
-
-print("Starting Event Processing Application...")
 
 consumer = Consumer(consumer_conf)
 producer = Producer(producer_conf)
@@ -41,6 +29,7 @@ output_topic = os.getenv('OUTPUT_TOPIC', 'processed-user-login')
 # Aggregation dictionaries
 device_type_count = defaultdict(int)
 locale_count = defaultdict(int)
+date_count = defaultdict(int)
 
 def process_message(message):
     data = json.loads(message.value().decode('utf-8'))
@@ -58,7 +47,20 @@ def process_message(message):
     data['locale'] = data.get('locale', 'Unknown')
     device_type_count[data['device_type']] = device_type_count.get(data['device_type'], 0) + 1
     locale_count[data['locale']] = locale_count.get(data['locale'], 0) + 1
+    # Date count aggregation by day, precision to the minute
+    login_date = time.strftime('%Y-%m-%d %H:%M', time.gmtime(data['timestamp']))
+    date_count[login_date] = date_count.get(login_date, 0) + 1
 
+    # Add the aggregates to the data
+    data['device_type_count'] = device_type_count
+    data['locale_count'] = locale_count
+    data['date_count'] = date_count
+    
+    # Print all logins by date, erasing the previous output
+    os.system('clear')
+    print("Logins by Date:")
+    for date, count in date_count.items():
+        print(f"{date}: {count}")
     return data
 
 try:
